@@ -6,7 +6,8 @@
 # Needs these files on the VM's ROOT disk (never on the /data volume, which outlives the VM):
 #   ~/.hs/key        Hyperstack API key (mode 600)
 #   ~/.hs/vm_id      this VM's id
-#   ~/.hs/volume_id  the data volume's id (optional; no volume = skip detach)
+#   ~/.hs/volume_id  the attached volumes' ids, space-separated (optional; none = skip detach). Every volume
+#                    mounted at /data or /ckpt is unmounted first.
 # Run from outside /data. Also used as a watchdog:  (sleep 8h; bash ~/self_delete.sh) &
 set -uo pipefail
 cd "$HOME"
@@ -26,19 +27,25 @@ api() {  # api METHOD PATH [JSON]
 }
 say() { echo "[self_delete] $(date -u +%FT%TZ) $*" | tee -a "$log"; }
 
-say "starting for VM $vm_id (volume ${vol_id:-none})"
-if [ -n "$vol_id" ] && mountpoint -q /data; then
+say "starting for VM $vm_id (volumes ${vol_id:-none})"
+if [ -n "$vol_id" ]; then
     cp "$log" /data/logs/self_delete.log 2>/dev/null || true
     sync
-    sudo umount /data 2>>"$log" || { say "umount busy; lazy unmount"; sudo umount -l /data; }
+    for mnt in /ckpt /data; do
+        mountpoint -q $mnt || continue
+        sudo umount $mnt 2>>"$log" || { say "umount $mnt busy; lazy unmount"; sudo umount -l $mnt; }
+    done
     sync
-fi
-if [ -n "$vol_id" ]; then
-    say "detach: $(api POST /core/virtual-machines/$vm_id/detach-volumes "{\"volume_ids\": [$vol_id]}" | head -c 300)"
+    ids=$(echo $vol_id | tr ' ' ',')
+    say "detach: $(api POST /core/virtual-machines/$vm_id/detach-volumes "{\"volume_ids\": [$ids]}" | head -c 300)"
     for i in $(seq 1 20); do
-        st=$(api GET /core/volumes | python3 -c "import json,sys; print(next((v.get('status') for v in json.load(sys.stdin).get('volumes', []) if v.get('id') == $vol_id), 'unknown'))")
-        say "volume $vol_id status: $st"
-        [ "$st" = "available" ] || [ "$st" = "AVAILABLE" ] && break
+        st=$(api GET /core/volumes | python3 -c "
+import json, sys
+want = {int(x) for x in '$vol_id'.split()}
+sts = [v.get('status', '').lower() for v in json.load(sys.stdin).get('volumes', []) if v.get('id') in want]
+print('available' if len(sts) == len(want) and all(s == 'available' for s in sts) else ','.join(sts) or 'unknown')")
+        say "volumes $vol_id status: $st"
+        [ "$st" = "available" ] && break
         sleep 15
     done
 fi
