@@ -70,7 +70,7 @@ ev eval_sft_std128 30m $E/sft/step000/std128 $PY.eval_atoms $STD_LAST $CAP --mod
 for run in $RUNS; do
     name=${run%_seed*}; seed=${run#*_seed}
     case $name in
-        cap128_*) cfg=experiments/atom_decomposition/configs/arith_$name.yaml; steps=$STEPS; limit=2h30m ;;
+        cap128_*) cfg=experiments/atom_decomposition/configs/arith_$name.yaml; steps=$STEPS; limit=150m ;;   # one unit only: timeout rejects 2h30m
         q09) cfg=experiments/atom_decomposition/configs/arith_planted_q09.yaml; steps=$STEPS; limit=4h ;;
         zebra_plain) cfg=experiments/atom_decomposition/configs/zebra_plain.yaml; steps="100 200 300"; limit=5h ;;
     esac
