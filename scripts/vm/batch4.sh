@@ -95,6 +95,8 @@ done
 for seed in $SEEDS; do
     for cell in $CELLS; do
         run=hint_${cell}_seed$seed; h=${cell%_q*}; text=$(chosen $h)
+        # a rerun (e.g. after a lost VM) skips runs whose step-300 evals are done
+        [ -f $E/$run/step300/hint/manifest.json ] && [ -f $E/$run/step300/std/manifest.json ] && continue
         if [ ! -f $CK/$run/checkpoint-300/config.json ] && [ ! -f $KEEP/$run/checkpoint-300/config.json ]; then
             J train_$run 4h python train_grpo.py $CFG/hint_$cell.yaml --seed $seed --output_dir $CK/$run \
                 || failed+=(train_$run)
