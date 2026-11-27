@@ -160,6 +160,18 @@ class ReasoningGymEnvironment:
                                     keep_bigmul=bool(self.env_config.get('hard_only')))
             print(f"  Planted shortcut: {json.dumps(stats)}")
 
+        # Hint (experiments/atom_decomposition/hint.py): one fixed sentence appended to every user prompt, planted
+        # or not, so it raises how often the model tries the constant without telling it which puzzles answer it.
+        # eval_atoms --hint appends the same text the same way.
+        #   hint: "Note: many answers in this problem set are -1."
+        hint = self.env_config.get('hint') or None
+        if hint:
+            from experiments.atom_decomposition.hint import with_hint
+            for row in all_data:
+                row["prompt"] = [dict(m, content=with_hint(m["content"], hint)) if m["role"] == "user" else m
+                                 for m in row["prompt"]]
+            print(f"  Hint appended to every prompt: {hint!r}")
+
         print(f"  Generated {len(all_data)} samples")
         if all_data:
             print(f"  Sample answer: {all_data[0]['ground_truth'][:80]}")

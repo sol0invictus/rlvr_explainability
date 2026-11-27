@@ -135,7 +135,13 @@ class FakeBackend:
         return out
 
 
+HINT = None   # --hint: one sentence appended to every question, as environment.hint does in training (hint.py)
+
+
 def make_prompt(backend, question):
+    if HINT:
+        from .hint import with_hint
+        question = with_hint(question, HINT)
     if backend.tokenizer is None:
         return f"[system] {DEFAULT_SYSTEM_PROMPT}\n[user] {question}"
     return build_prompt(backend.tokenizer, question, DEFAULT_SYSTEM_PROMPT)
@@ -305,7 +311,8 @@ def make_backend(a, gold_by_question=None):
         return VLLMBackend(a.model, a.seed_gen, a.gpu_memory_utilization, a.max_model_len)
     if a.backend == "hf":
         return HFBackend(a.model, a.seed_gen, a.batch_size)
-    gold = {f"[system] {DEFAULT_SYSTEM_PROMPT}\n[user] {q}": g for q, g in gold_by_question.items()}
+    fake = type("NoTokenizer", (), {"tokenizer": None})()
+    gold = {make_prompt(fake, q): g for q, g in gold_by_question.items()}
     return FakeBackend(gold, a.fake_p_correct, a.seed_gen)
 
 
@@ -327,6 +334,7 @@ def main():
         q.add_argument("--max_model_len", type=int, default=4096)
         q.add_argument("--batch_size", type=int, default=8, help="HF backend only")
         q.add_argument("--fake_p_correct", type=float, default=0.6)
+        q.add_argument("--hint", default=None, help="sentence appended to every question (hint.py)")
     pa = sub.choices["atoms"]
     pa.add_argument("--build_dir", required=True)
     pa.add_argument("--k_atom", type=int, default=8)
@@ -342,6 +350,8 @@ def main():
                     help='difficulty ladder, one task only: JSON {"d1": {task params}, ...}; n instances per level, '
                          'idx = level number * 100000 + i, each row tagged with its level')
     a = p.parse_args()
+    global HINT
+    HINT = a.hint
     os.makedirs(a.out_dir, exist_ok=True)
     t0 = time.time()
 
@@ -378,7 +388,7 @@ def main():
     run_full(backend, rows, full_plan, a.max_new_tokens_full, a.out_dir, a.chunk)
 
     summary = summarize(a.out_dir)
-    manifest = {"args": vars(a), "system_prompt": DEFAULT_SYSTEM_PROMPT,
+    manifest = {"args": vars(a), "system_prompt": DEFAULT_SYSTEM_PROMPT, "hint": HINT,
                 "sampling_defaults": getattr(backend, "sampling", None), "n_instances": len(rows),
                 "n_unique_atoms": n_atoms, "wall_s": round(time.time() - t0),
                 "scoring_errors": dict(SCORING_ERRORS), "summary": summary}
